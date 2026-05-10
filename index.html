@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>口袋記帳</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0f0e0c;
+    --surface:  #1a1916;
+    --border:   #2e2c28;
+    --gold:     #c9a84c;
+    --gold-dim: #7a6330;
+    --red:      #d94f3d;
+    --green:    #4caf82;
+    --text:     #e8e0d0;
+    --muted:    #6b6457;
+    --card-h:   220px;
+
+    --cat0: #c9a84c;
+    --cat1: #4caf82;
+    --cat2: #6a9fcb;
+    --cat3: #d0785a;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Serif TC', serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Noise texture overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ── Header ── */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(15,14,12,.88);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px;
+  }
+  .logo {
+    font-size: 1.1rem; font-weight: 900; letter-spacing: .12em;
+    color: var(--gold);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--text); font-weight: 400; }
+  .header-actions { display: flex; gap: .75rem; }
+  .btn-sm {
+    padding: .35rem .9rem;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    font-family: 'DM Mono', monospace; font-size: .72rem;
+    letter-spacing: .08em; cursor: pointer; border-radius: 4px;
+    transition: all .2s;
+  }
+  .btn-sm:hover { border-color: var(--gold); color: var(--gold); }
+  .btn-sm.danger:hover { border-color: var(--red); color: var(--red); }
+
+  /* ── Main layout ── */
+  main {
+    position: relative; z-index: 1;
+    max-width: 1100px; margin: 0 auto;
+    padding: 2.5rem 1.5rem 6rem;
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 2rem;
+    align-items: start;
+  }
+  @media(max-width:760px){
+    main { grid-template-columns: 1fr; }
+  }
+
+  /* ── Section labels ── */
+  .section-label {
+    font-family: 'DM Mono', monospace; font-size: .68rem;
+    letter-spacing: .2em; color: var(--muted);
+    text-transform: uppercase; margin-bottom: 1rem;
+  }
+
+  /* ── Budget bar ── */
+  .budget-strip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.75rem;
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+  }
+  .budget-item { text-align: center; }
+  .budget-item .val {
+    font-family: 'DM Mono', monospace; font-size: 1.45rem;
+    font-weight: 500; color: var(--text); line-height: 1;
+  }
+  .budget-item .val.pos { color: var(--green); }
+  .budget-item .val.neg { color: var(--red); }
+  .budget-item .lbl {
+    font-size: .7rem; color: var(--muted); margin-top: .35rem;
+    letter-spacing: .05em;
+  }
+  .budget-bar-wrap {
+    grid-column: 1/-1;
+    margin-top: .25rem;
+  }
+  .budget-bar-track {
+    height: 6px; background: var(--border); border-radius: 99px; overflow: hidden;
+  }
+  .budget-bar-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+    transition: width .6s cubic-bezier(.4,0,.2,1);
+  }
+  .budget-bar-fill.over { background: var(--red); }
+
+  /* ── Category cards ── */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+  @media(max-width:480px){ .cards-grid { grid-template-columns: 1fr; } }
+
+  .cat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.25rem 1.4rem 1.1rem;
+    cursor: pointer;
+    transition: border-color .2s, transform .15s;
+    position: relative; overflow: hidden;
+    animation: fadeUp .45s both;
+  }
+  .cat-card:nth-child(1){ animation-delay:.05s }
+  .cat-card:nth-child(2){ animation-delay:.10s }
+  .cat-card:nth-child(3){ animation-delay:.15s }
+  .cat-card:nth-child(4){ animation-delay:.20s }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(18px) }
+    to   { opacity:1; transform:translateY(0) }
+  }
+
+  .cat-card::before {
+    content:''; position:absolute; top:0; left:0;
+    width:3px; height:100%; border-radius:99px 0 0 99px;
+  }
+  .cat-card[data-cat="0"]::before { background: var(--cat0); }
+  .cat-card[data-cat="1"]::before { background: var(--cat1); }
+  .cat-card[data-cat="2"]::before { background: var(--cat2); }
+  .cat-card[data-cat="3"]::before { background: var(--cat3); }
+
+  .cat-card:hover { border-color: var(--gold-dim); transform: translateY(-2px); }
+  .cat-card.selected { border-color: var(--gold); }
+
+  .cat-name {
+    font-size: .8rem; letter-spacing: .06em; color: var(--muted);
+    margin-bottom: .5rem;
+  }
+  .cat-balance {
+    font-family: 'DM Mono', monospace; font-size: 1.7rem;
+    font-weight: 500; line-height: 1;
+    color: var(--text);
+  }
+  .cat-balance.low { color: var(--red); }
+  .cat-balance.ok  { color: var(--text); }
+
+  .cat-updated {
+    font-family: 'DM Mono', monospace; font-size: .62rem;
+    color: var(--muted); margin-top: .6rem;
+  }
+
+  /* ── Right sidebar ── */
+  .sidebar { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  /* ── Panel ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.35rem 1.4rem;
+  }
+  .panel-title {
+    font-size: .9rem; font-weight: 700; color: var(--text);
+    margin-bottom: 1rem; letter-spacing: .04em;
+  }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex; gap: .5rem; margin-bottom: 1.1rem;
+  }
+  .tab {
+    flex: 1; padding: .45rem 0; text-align: center;
+    font-family: 'DM Mono', monospace; font-size: .72rem;
+    letter-spacing: .08em; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); color: var(--muted);
+    background: transparent; transition: all .2s;
+  }
+  .tab.active { background: var(--gold); border-color: var(--gold); color: #0f0e0c; }
+  .tab:not(.active):hover { border-color: var(--gold-dim); color: var(--gold); }
+
+  /* ── Form ── */
+  .form-group { margin-bottom: .85rem; }
+  label {
+    display: block; font-size: .7rem; letter-spacing: .1em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: .4rem;
+  }
+  select, input[type=text], input[type=number] {
+    width: 100%; padding: .6rem .8rem;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+    font-family: 'DM Mono', monospace; font-size: .85rem;
+    outline: none; transition: border-color .2s;
+    -webkit-appearance: none;
+  }
+  select:focus, input:focus { border-color: var(--gold); }
+  select option { background: var(--bg); }
+
+  .btn-primary {
+    width: 100%; padding: .75rem;
+    background: var(--gold);
+    border: none; border-radius: 8px;
+    color: #0f0e0c; font-family: 'Noto Serif TC', serif;
+    font-size: .9rem; font-weight: 700; letter-spacing: .06em;
+    cursor: pointer; transition: all .2s;
+  }
+  .btn-primary:hover { background: #d4b060; transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary.danger { background: var(--red); color: #fff; }
+  .btn-primary.danger:hover { background: #e05a47; }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: .8rem 1.4rem;
+    font-size: .85rem; color: var(--text);
+    opacity: 0; pointer-events: none;
+    transition: all .3s; z-index: 999;
+    min-width: 240px; text-align: center;
+  }
+  #toast.show {
+    opacity: 1; transform: translateX(-50%) translateY(0);
+  }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.error   { border-color: var(--red); color: var(--red); }
+
+  /* ── Transactions list ── */
+  .tx-list { display: flex; flex-direction: column; gap: .5rem; max-height: 320px; overflow-y: auto; }
+  .tx-list::-webkit-scrollbar { width: 4px; }
+  .tx-list::-webkit-scrollbar-track { background: transparent; }
+  .tx-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+  .tx-item {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: .3rem; padding: .65rem .8rem;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; animation: fadeUp .3s both;
+  }
+  .tx-item .tx-top { display: flex; align-items: center; gap: .5rem; }
+  .tx-badge {
+    font-family: 'DM Mono', monospace; font-size: .6rem;
+    padding: .1rem .4rem; border-radius: 3px; letter-spacing: .05em;
+  }
+  .tx-badge.allocate { background: rgba(201,168,76,.15); color: var(--gold); }
+  .tx-badge.expense  { background: rgba(217,79,61,.15);  color: var(--red); }
+  .tx-cat { font-size: .75rem; color: var(--muted); }
+  .tx-desc { font-size: .78rem; color: var(--text); grid-column: 1/-1; }
+  .tx-amount {
+    font-family: 'DM Mono', monospace; font-size: .95rem;
+    font-weight: 500; text-align: right; align-self: center;
+  }
+  .tx-amount.allocate { color: var(--green); }
+  .tx-amount.expense  { color: var(--red); }
+  .tx-time { font-family: 'DM Mono', monospace; font-size: .6rem; color: var(--muted); }
+
+  /* ── Salary setup ── */
+  .salary-row { display: flex; gap: .5rem; }
+  .salary-row select { flex: 1; }
+
+  /* ── Loading ── */
+  .spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid var(--border); border-top-color: var(--gold);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-state {
+    text-align: center; padding: 2rem 0;
+    color: var(--muted); font-size: .82rem;
+  }
+
+  /* ── URL setup notice ── */
+  #setup-notice {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.85); backdrop-filter: blur(8px);
+    z-index: 200; display: flex; align-items: center; justify-content: center;
+  }
+  .setup-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 2.5rem;
+    max-width: 460px; width: 90%;
+  }
+  .setup-box h2 { font-size: 1.2rem; color: var(--gold); margin-bottom: .75rem; }
+  .setup-box p  { font-size: .82rem; color: var(--muted); line-height: 1.7; margin-bottom: 1.2rem; }
+  .setup-box input { margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+
+<!-- ── Setup Modal ── -->
+<div id="setup-notice">
+  <div class="setup-box">
+    <h2>⚙️ 初始設定</h2>
+    <p>
+      請貼上你的 <strong style="color:var(--text)">Google Apps Script 部署網址</strong>（Web App URL）。<br>
+      格式類似：<code style="color:var(--gold);font-size:.78rem">https://script.google.com/macros/s/AK…/exec</code>
+    </p>
+    <div class="form-group">
+      <label>Apps Script 網址</label>
+      <input type="text" id="gas-url-input" placeholder="https://script.google.com/macros/s/…/exec">
+    </div>
+    <button class="btn-primary" onclick="saveGasUrl()">確認並初始化</button>
+  </div>
+</div>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">口袋<span>記帳</span></div>
+  <div class="header-actions">
+    <button class="btn-sm" onclick="refreshAll()">↻ 重新整理</button>
+    <button class="btn-sm" onclick="openSalaryPanel()">設定薪水</button>
+    <button class="btn-sm danger" onclick="confirmReset()">月底重置</button>
+  </div>
+</header>
+
+<!-- ── Main ── -->
+<main>
+  <!-- LEFT -->
+  <div class="left-col">
+
+    <!-- Budget strip -->
+    <div class="section-label">本月預算概覽</div>
+    <div class="budget-strip">
+      <div class="budget-item">
+        <div class="val" id="b-salary">—</div>
+        <div class="lbl">月薪總額</div>
+      </div>
+      <div class="budget-item">
+        <div class="val" id="b-allocated">—</div>
+        <div class="lbl">已分配</div>
+      </div>
+      <div class="budget-item">
+        <div class="val pos" id="b-remain">—</div>
+        <div class="lbl">尚未分配</div>
+      </div>
+      <div class="budget-bar-wrap">
+        <div class="budget-bar-track">
+          <div class="budget-bar-fill" id="budget-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cards -->
+    <div class="section-label">各類別口袋餘額</div>
+    <div class="cards-grid" id="cards-grid">
+      <div class="cat-card" data-cat="0" style="animation-delay:.05s">
+        <div class="cat-name">分期</div>
+        <div class="cat-balance" id="bal-0">載入中…</div>
+        <div class="cat-updated" id="upd-0"></div>
+      </div>
+      <div class="cat-card" data-cat="1" style="animation-delay:.1s">
+        <div class="cat-name">保險</div>
+        <div class="cat-balance" id="bal-1">載入中…</div>
+        <div class="cat-updated" id="upd-1"></div>
+      </div>
+      <div class="cat-card" data-cat="2" style="animation-delay:.15s">
+        <div class="cat-name">汽機車費用</div>
+        <div class="cat-balance" id="bal-2">載入中…</div>
+        <div class="cat-updated" id="upd-2"></div>
+      </div>
+      <div class="cat-card" data-cat="3" style="animation-delay:.2s">
+        <div class="cat-name">生活開支</div>
+        <div class="cat-balance" id="bal-3">載入中…</div>
+        <div class="cat-updated" id="upd-3"></div>
+      </div>
+    </div>
+
+    <!-- Transaction history -->
+    <div class="section-label">最近交易紀錄</div>
+    <div class="panel">
+      <div id="tx-list-wrap">
+        <div class="empty-state"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Action panel -->
+    <div class="panel">
+      <div class="panel-title">記帳操作</div>
+      <div class="tabs">
+        <button class="tab active" id="tab-alloc" onclick="switchTab('allocate')">分配薪水</button>
+        <button class="tab"        id="tab-exp"   onclick="switchTab('expense')">記錄支出</button>
+      </div>
+
+      <div id="form-allocate">
+        <div class="form-group">
+          <label>分配至類別</label>
+          <select id="alloc-cat">
+            <option value="分期">分期</option>
+            <option value="保險">保險</option>
+            <option value="汽機車費用">汽機車費用</option>
+            <option value="生活開支">生活開支</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>金額（元）</label>
+          <input type="number" id="alloc-amt" placeholder="0" min="1">
+        </div>
+        <div class="form-group">
+          <label>備註（選填）</label>
+          <input type="text" id="alloc-desc" placeholder="例：本週薪水分配">
+        </div>
+        <button class="btn-primary" onclick="doAllocate()">✦ 分配</button>
+      </div>
+
+      <div id="form-expense" style="display:none">
+        <div class="form-group">
+          <label>支出類別</label>
+          <select id="exp-cat">
+            <option value="分期">分期</option>
+            <option value="保險">保險</option>
+            <option value="汽機車費用">汽機車費用</option>
+            <option value="生活開支">生活開支</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>金額（元）</label>
+          <input type="number" id="exp-amt" placeholder="0" min="1">
+        </div>
+        <div class="form-group">
+          <label>備註（選填）</label>
+          <input type="text" id="exp-desc" placeholder="例：加油">
+        </div>
+        <button class="btn-primary danger" onclick="doExpense()">▼ 記錄支出</button>
+      </div>
+    </div>
+
+    <!-- Salary setup panel (hidden by default) -->
+    <div class="panel" id="salary-panel" style="display:none">
+      <div class="panel-title">薪水設定</div>
+      <div class="form-group">
+        <label>月薪總額（元）</label>
+        <input type="number" id="salary-amt" placeholder="50000" min="1">
+      </div>
+      <div class="form-group">
+        <label>領薪週期</label>
+        <div class="salary-row">
+          <select id="pay-period">
+            <option value="週領">週領</option>
+            <option value="雙週領" selected>雙週領</option>
+            <option value="月領">月領</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="doSetSalary()">儲存薪水設定</button>
+    </div>
+
+    <!-- Quick stats -->
+    <div class="panel">
+      <div class="panel-title">口袋合計</div>
+      <div style="text-align:center;padding:.5rem 0">
+        <div style="font-family:'DM Mono',monospace;font-size:2rem;font-weight:500;color:var(--gold)" id="total-pocket">—</div>
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem;letter-spacing:.05em">目前所有類別合計餘額</div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ── Config ──
+const GAS_KEY = 'pocket_gas_url';
+let GAS_URL   = localStorage.getItem(GAS_KEY) || '';
+const CATS    = ['分期','保險','汽機車費用','生活開支'];
+
+// ── Init ──
+window.addEventListener('DOMContentLoaded', () => {
+  if (GAS_URL) {
+    document.getElementById('setup-notice').style.display = 'none';
+    refreshAll();
+  } else {
+    document.getElementById('gas-url-input').value = '';
+  }
+});
+
+function saveGasUrl() {
+  const url = document.getElementById('gas-url-input').value.trim();
+  if (!url.startsWith('https://script.google.com')) {
+    toast('請輸入正確的 Apps Script 網址', 'error'); return;
+  }
+  GAS_URL = url;
+  localStorage.setItem(GAS_KEY, url);
+  document.getElementById('setup-notice').style.display = 'none';
+  gasPost({ action: 'init' }).then(() => refreshAll());
+}
+
+// ── API helpers ──
+async function gasGet(params) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`${GAS_URL}?${qs}`);
+  return res.json();
+}
+
+async function gasPost(body) {
+  const res = await fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+// ── Refresh ──
+async function refreshAll() {
+  loadBalances();
+  loadTransactions();
+}
+
+async function loadBalances() {
+  try {
+    const data = await gasGet({ action: 'getBalances' });
+    if (!data.success) { toast(data.message, 'error'); return; }
+    renderBalances(data.balances, data.budget);
+  } catch(e) {
+    toast('無法連線到後端，請確認 GAS 網址', 'error');
+  }
+}
+
+function renderBalances(balances, budget) {
+  // Budget strip
+  const salary    = budget.monthlySalary;
+  const allocated = budget.totalAllocated;
+  const remain    = budget.unallocated;
+  const pct       = salary > 0 ? Math.min((allocated / salary) * 100, 100) : 0;
+
+  document.getElementById('b-salary').textContent    = '$' + fmt(salary);
+  document.getElementById('b-allocated').textContent = '$' + fmt(allocated);
+  const remEl = document.getElementById('b-remain');
+  remEl.textContent = (remain < 0 ? '-$' : '$') + fmt(Math.abs(remain));
+  remEl.className = 'val ' + (remain < 0 ? 'neg' : 'pos');
+
+  const bar = document.getElementById('budget-bar');
+  bar.style.width = pct + '%';
+  bar.className   = 'budget-bar-fill' + (pct >= 100 ? ' over' : '');
+
+  // Cards
+  balances.forEach((b, i) => {
+    const el  = document.getElementById('bal-' + i);
+    const upd = document.getElementById('upd-' + i);
+    el.textContent  = '$' + fmt(b.balance);
+    el.className    = 'cat-balance ' + (b.balance < 0 ? 'low' : 'ok');
+    upd.textContent = b.lastUpdate !== '-' ? '更新 ' + b.lastUpdate : '';
+  });
+
+  // Total
+  document.getElementById('total-pocket').textContent = '$' + fmt(budget.totalBalance);
+}
+
+async function loadTransactions() {
+  const wrap = document.getElementById('tx-list-wrap');
+  wrap.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  try {
+    const data = await gasGet({ action: 'getTransactions', limit: 40 });
+    if (!data.success) { wrap.innerHTML = '<div class="empty-state">載入失敗</div>'; return; }
+    renderTransactions(data.transactions, wrap);
+  } catch(e) {
+    wrap.innerHTML = '<div class="empty-state">連線失敗</div>';
+  }
+}
+
+function renderTransactions(txs, wrap) {
+  if (!txs.length) {
+    wrap.innerHTML = '<div class="empty-state">尚無交易紀錄</div>'; return;
+  }
+  const list = document.createElement('div');
+  list.className = 'tx-list';
+  txs.forEach(tx => {
+    const isAlloc = tx.type === '分配';
+    const sign    = isAlloc ? '+' : '-';
+    const cls     = isAlloc ? 'allocate' : 'expense';
+    const item    = document.createElement('div');
+    item.className = 'tx-item';
+    item.innerHTML = `
+      <div>
+        <div class="tx-top">
+          <span class="tx-badge ${cls}">${tx.type}</span>
+          <span class="tx-cat">${tx.category}</span>
+          <span class="tx-time">${tx.timestamp}</span>
+        </div>
+        <div class="tx-desc">${tx.description || ''}</div>
+      </div>
+      <div class="tx-amount ${cls}">${sign}$${fmt(tx.amount)}</div>
+    `;
+    list.appendChild(item);
+  });
+  wrap.innerHTML = '';
+  wrap.appendChild(list);
+}
+
+// ── Actions ──
+async function doAllocate() {
+  const cat  = document.getElementById('alloc-cat').value;
+  const amt  = parseFloat(document.getElementById('alloc-amt').value);
+  const desc = document.getElementById('alloc-desc').value.trim();
+  if (!amt || amt <= 0) { toast('請輸入有效金額', 'error'); return; }
+
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '處理中…';
+  const data = await gasPost({ action: 'allocate', category: cat, amount: amt, description: desc });
+  btn.disabled = false; btn.textContent = '✦ 分配';
+
+  toast(data.message, data.success ? 'success' : 'error');
+  if (data.success) {
+    document.getElementById('alloc-amt').value  = '';
+    document.getElementById('alloc-desc').value = '';
+    refreshAll();
+  }
+}
+
+async function doExpense() {
+  const cat  = document.getElementById('exp-cat').value;
+  const amt  = parseFloat(document.getElementById('exp-amt').value);
+  const desc = document.getElementById('exp-desc').value.trim();
+  if (!amt || amt <= 0) { toast('請輸入有效金額', 'error'); return; }
+
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '處理中…';
+  const data = await gasPost({ action: 'expense', category: cat, amount: amt, description: desc });
+  btn.disabled = false; btn.textContent = '▼ 記錄支出';
+
+  toast(data.message, data.success ? 'success' : 'error');
+  if (data.success) {
+    document.getElementById('exp-amt').value  = '';
+    document.getElementById('exp-desc').value = '';
+    refreshAll();
+  }
+}
+
+async function doSetSalary() {
+  const amt    = parseFloat(document.getElementById('salary-amt').value);
+  const period = document.getElementById('pay-period').value;
+  if (!amt || amt <= 0) { toast('請輸入正確月薪', 'error'); return; }
+  const data = await gasPost({ action: 'setSalary', monthlySalary: amt, payPeriod: period });
+  toast(data.message, data.success ? 'success' : 'error');
+  if (data.success) refreshAll();
+}
+
+async function confirmReset() {
+  if (!confirm('⚠️ 確定要執行月底重置？\n\n本月已分配 & 支出統計將歸零，各類別餘額保留。')) return;
+  const data = await gasPost({ action: 'monthlyReset' });
+  toast(data.message, data.success ? 'success' : 'error');
+  if (data.success) refreshAll();
+}
+
+// ── UI helpers ──
+function switchTab(mode) {
+  document.getElementById('form-allocate').style.display = mode === 'allocate' ? '' : 'none';
+  document.getElementById('form-expense').style.display  = mode === 'expense'  ? '' : 'none';
+  document.getElementById('tab-alloc').className = 'tab' + (mode === 'allocate' ? ' active' : '');
+  document.getElementById('tab-exp').className   = 'tab' + (mode === 'expense'  ? ' active' : '');
+}
+
+function openSalaryPanel() {
+  const p = document.getElementById('salary-panel');
+  p.style.display = p.style.display === 'none' ? '' : 'none';
+}
+
+let toastTimer;
+function toast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className   = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+function fmt(n) {
+  return Number(n).toLocaleString('zh-TW');
+}
+</script>
+</body>
+</html>
